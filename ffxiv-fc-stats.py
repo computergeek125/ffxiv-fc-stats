@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
+import matplotlib
 import matplotlib.pyplot as plt
 from pprint import pprint
 import ratelimit
@@ -24,6 +25,7 @@ parser.add_argument("-c", "--config", help="Config to use", default="config.json
 #parser.add_argument("-f", "--free_company", help="Name of Free Company to find", required=True)
 parser.add_argument("-i", "--id", help="ID of the Free Company to query", required=True)
 #parser.add_argument("-s", "--since", help="Exclude members who haven't logged in in this many days", default=None)
+parser.add_argument("-o", "--out", help="filename to write to. If none, will use TkAgg GUI", default=None)
 parser.add_argument("-l", "--log", dest="logLevel", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help="Set the logging level", default='INFO')
 
 args = parser.parse_args()
@@ -78,7 +80,11 @@ async def run(config, session, args):
             levels[i] = 0
         for m in member_data.keys():
             levels[char_max_level(member_data[m])] += 1
-
+        plt.bar(levels.keys(), levels.values(), align="center")
+        plt.ylabel("Number of members")
+        plt.xlabel("Level")
+        plt.title("{name} member levels".format(name=fc["FreeCompany"]["Name"]))
+        plt.show()
     except:
         logging.exception("An exception occured while contacting XIVAPI")
     finally:
@@ -86,7 +92,6 @@ async def run(config, session, args):
 
 if __name__ == '__main__':
     logging.basicConfig(level=getattr(logging, args.logLevel), format='%(message)s', datefmt='%H:%M')
-
     loop = asyncio.get_event_loop()
     session = aiohttp.ClientSession(loop=loop)
     loop.run_until_complete(run(config, session, args))
