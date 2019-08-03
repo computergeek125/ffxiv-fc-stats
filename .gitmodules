@@ -1,0 +1,3 @@
+[submodule "xivapipy"]
+	path = xivapipy
+	url = https://github.com/computergeek125/xivapi.py
