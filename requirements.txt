@@ -1,2 +1,3 @@
 xivapi.py>=0.1.1
 matplotlib
+ratelimit
