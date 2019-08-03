@@ -7,8 +7,12 @@
 import aiohttp
 import argparse
 import asyncio
+import json
 import logging
+import matplotlib.pyplot as plt
 from pprint import pprint
+import ratelimit
+import time
 try:
     import xivapipy.xivapi as xivapi
 except ImportError:
@@ -24,19 +28,38 @@ parser.add_argument("-l", "--log", dest="logLevel", choices=['DEBUG', 'INFO', 'W
 
 args = parser.parse_args()
 
-config_file = args.config
-config = {"api-key":None}
+with open(args.config) as config_file:
+    config = json.load(config_file)
+
+@ratelimit.limits(config["rate-limit"], config["rate-limit-window"])
+def api_call_int(call, *args, **kwargs):
+    return call(*args, **kwargs)
+
+def api_call(call, *args, **kwargs):
+    while True:
+        try:
+            return api_call_int(call, *args, **kwargs)
+        except ratelimit.RateLimitException:
+            logging.warning("Rate limit exceeded. Sleeping for {t}s.".format(t=config["rate-limit-window"]))
+            time.sleep(config["rate-limit-window"])
+
+def char_max_level(character):
+    levels = []
+    cj = character["Character"]["ClassJobs"]
+    for c in cj.keys():
+        levels.append(cj[c]["Level"])
+    return max(levels)
 
 async def run(config, session, args):
-    global fc
     global fcm
     global member_data
+    global levels
     try:
         if config['api-key'] is None:
             client = xivapi.Client(session=session, api_key="")
         else:
             client = xivapi.Client(session=session, api_key=config['api-key'])
-        fc = await client.freecompany_by_id(args.id, include_freecompany_members=True)
+        fc = await api_call(client.freecompany_by_id, args.id, include_freecompany_members=True)
         logging.info("Loaded free company \"{name}\" ({gc}): {slogan}"
             .format( name=fc["FreeCompany"]["Name"],
                      gc=fc["FreeCompany"]["GrandCompany"],
@@ -44,10 +67,18 @@ async def run(config, session, args):
             )
         )
         fcm = fc["FreeCompanyMembers"]
+        logging.warning("Loading character information from XIVAPI.  This may take up to 4s per member.")
         member_data = {}
         for m in fcm:
             logging.info("Processing character id {id} with name {name}".format(id=m["ID"], name=m["Name"]))
-            member_data[m["ID"]] = await client.character_by_id(m["ID"])
+            member_data[m["ID"]] = await api_call(client.character_by_id, m["ID"])
+        logging.info("Crunching numbers...")
+        levels = {}
+        for i in range(1,81):
+            levels[i] = 0
+        for m in member_data.keys():
+            levels[char_max_level(member_data[m])] += 1
+
     except:
         logging.exception("An exception occured while contacting XIVAPI")
     finally:
