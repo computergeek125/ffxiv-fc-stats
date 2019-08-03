@@ -25,13 +25,14 @@ parser.add_argument("-c", "--config", help="Config to use", default="config.json
 #parser.add_argument("-f", "--free_company", help="Name of Free Company to find", required=True)
 parser.add_argument("-i", "--id", help="ID of the Free Company to query", required=True)
 #parser.add_argument("-s", "--since", help="Exclude members who haven't logged in in this many days", default=None)
-parser.add_argument("-o", "--out", help="filename to write to. If none, will use TkAgg GUI", default=None)
+parser.add_argument("-o", "--out", help="filename to write to. If none, will attempt use GUI", default=None)
 parser.add_argument("-l", "--log", dest="logLevel", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help="Set the logging level", default='INFO')
 
 args = parser.parse_args()
 
 with open(args.config) as config_file:
     config = json.load(config_file)
+matplotlib.style.use(config["mpl-style"])
 
 @ratelimit.limits(config["rate-limit"], config["rate-limit-window"])
 def api_call_int(call, *args, **kwargs):
@@ -53,6 +54,7 @@ def char_max_level(character):
     return max(levels)
 
 async def run(config, session, args):
+    global fc
     global fcm
     global member_data
     global levels
@@ -72,21 +74,25 @@ async def run(config, session, args):
         logging.warning("Loading character information from XIVAPI.  This may take up to 4s per member.")
         member_data = {}
         for m in fcm:
-            logging.info("Processing character id {id} with name {name}".format(id=m["ID"], name=m["Name"]))
+            logging.info("Processing character {name} ({id})".format(id=m["ID"], name=m["Name"]))
             member_data[m["ID"]] = await api_call(client.character_by_id, m["ID"])
         logging.info("Crunching numbers...")
         levels = {}
         for i in range(1,81):
             levels[i] = 0
         for m in member_data.keys():
-            levels[char_max_level(member_data[m])] += 1
-        plt.bar(levels.keys(), levels.values(), align="center")
+            if member_data[m]["Info"]["Character"]["IsActive"]:
+                logging.debug("Calculating max level for character {n} ({i})".format(n=member_data[m]["Character"]["Name"],i=m))
+                levels[char_max_level(member_data[m])] += 1
+            else:
+                logging.debug("Skipping level calculation for inactive character {i}".format(i=m))
+        plt.bar(levels.keys(), levels.values(), align="center", width=0.9)
         plt.ylabel("Number of members")
         plt.xlabel("Level")
         plt.title("{name} member levels".format(name=fc["FreeCompany"]["Name"]))
         plt.show()
     except:
-        logging.exception("An exception occured while contacting XIVAPI")
+        logging.exception("An exception occured during program execution")
     finally:
         await session.close()
 
